@@ -26,6 +26,13 @@ This is the student-facing documentation table of contents.
 - `go-live-checklist.pdf` : production checklist for later modules
 - `student-quickstart.pdf` : printable first-hour setup guide
 
+## Policies
+
+- `refund-policy.pdf` : refund terms for course purchases
+- `support-policy.pdf` : what course support covers
+- `privacy-policy.pdf` : how course-related buyer data is handled
+- `terms-of-use.pdf` : terms of purchase and use
+
 ---
 
 ## Troubleshooting

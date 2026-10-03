@@ -75,6 +75,10 @@ If something breaks, open:
 - Troubleshooting : `docs/troubleshooting.md`
 - Daraja cheat sheet : `docs/daraja-cheatsheet.pdf`
 - Handbook : `docs/handbook.pdf`
+- Refund policy : `docs/refund-policy.pdf`
+- Support policy : `docs/support-policy.pdf`
+- Privacy policy : `docs/privacy-policy.pdf`
+- Terms of use : `docs/terms-of-use.pdf`
 
 ### Optional : rebuild the student quickstart PDF
 
