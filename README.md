@@ -1,8 +1,12 @@
 # n8n M-Pesa Mastery : Consumer Repo
 
+> **Build Production-Ready STK Push Payment Workflows - No Backend code**
+
 This repo is for **course students / consumers**.
 
-It contains the practical assets you need to complete the hands-on course:
+It contains the practical assets you need to build, test, and deploy production-ready STK Push payment workflows without writing a custom backend service.
+
+Inside this repo you will find the hands-on runtime assets for the course:
 
 - local Docker setup
 - n8n workflows

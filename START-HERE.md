@@ -1,5 +1,9 @@
 # Start Here : Student Setup Guide
 
+> **n8n M-Pesa Mastery**
+>
+> **Build Production-Ready STK Push Payment Workflows - No Backend code**
+
 If you just bought the course and want the fastest route to a working local setup, start here.
 
 ---
@@ -16,7 +20,7 @@ By the end of your first hour, you should be able to:
 - import the Postman collection
 - understand where the callback URL will come from
 
-You do **not** need to finish the full M-Pesa integration in the first hour.
+You do **not** need to finish the full M-Pesa integration in the first hour. The goal is to get the local environment ready so the production-ready workflow lessons make sense when you reach them.
 
 ---
 
