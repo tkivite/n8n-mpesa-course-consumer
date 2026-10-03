@@ -1,0 +1,102 @@
+{
+  "name": "03 - M-Pesa STK Callback Handler",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mpesa/stk-callback",
+        "responseMode": "onReceived",
+        "responseData": "={{ JSON.stringify({ ResultCode: 0, ResultDesc: 'Accepted' }) }}",
+        "options": { "rawBody": false }
+      },
+      "id": "c3c3c3c3-0000-0000-0000-000000000001",
+      "name": "Webhook /mpesa/stk-callback",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "mpesa-stk-callback"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Safaricom callback shape:\n// { Body: { stkCallback: { MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc, CallbackMetadata?: { Item: [...] } } } }\nconst body = $json.body || $json;\nconst cb = body?.Body?.stkCallback;\nif (!cb) throw new Error('Not a valid STK callback payload');\n\nconst resultCode = cb.ResultCode;\nconst isSuccess = resultCode === 0;\n\nconst meta = {};\nif (cb.CallbackMetadata?.Item) {\n  for (const item of cb.CallbackMetadata.Item) {\n    meta[item.Name] = item.Value;\n  }\n}\n\nreturn [{\n  json: {\n    checkout_request_id: cb.CheckoutRequestID,\n    merchant_request_id: cb.MerchantRequestID,\n    result_code: resultCode,\n    result_desc: cb.ResultDesc,\n    status: isSuccess ? 'success' : 'failed',\n    amount: meta.Amount || null,\n    mpesa_receipt_number: meta.MpesaReceiptNumber || null,\n    transaction_date: meta.TransactionDate ? String(meta.TransactionDate) : null,\n    phone_number: meta.PhoneNumber ? String(meta.PhoneNumber) : null,\n    raw: cb\n  }\n}];"
+      },
+      "id": "c3c3c3c3-0000-0000-0000-000000000002",
+      "name": "Parse Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE mpesa_transactions\nSET status = $1,\n    result_code = $2,\n    result_desc = $3,\n    mpesa_receipt_number = $4,\n    transaction_date = $5,\n    updated_at = NOW()\nWHERE checkout_request_id = $6\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.status }},{{ $json.result_code }},{{ $json.result_desc }},{{ $json.mpesa_receipt_number }},{{ $json.transaction_date }},{{ $json.checkout_request_id }}"
+        }
+      },
+      "id": "c3c3c3c3-0000-0000-0000-000000000003",
+      "name": "Update Transaction",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $('Parse Callback').item.json.status }}",
+              "rightValue": "success",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "c3c3c3c3-0000-0000-0000-000000000004",
+      "name": "Was it successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a confirmation message - plug in Email/SMS/WhatsApp/Slack after this\nconst tx = $('Parse Callback').item.json;\nconst row = $('Update Transaction').item.json;\n\nreturn [{\n  json: {\n    to: tx.phone_number,\n    subject: 'Payment Received',\n    message: `Hi! We received your payment of KES ${tx.amount}. M-Pesa receipt: ${tx.mpesa_receipt_number}. Ref: ${row?.reference || 'N/A'}. Thank you!`,\n    receipt: tx.mpesa_receipt_number,\n    amount: tx.amount,\n    reference: row?.reference\n  }\n}];"
+      },
+      "id": "c3c3c3c3-0000-0000-0000-000000000005",
+      "name": "Build Confirmation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tx = $('Parse Callback').item.json;\nreturn [{\n  json: {\n    to_notify: 'ops@yourcompany.co.ke',\n    reason: tx.result_desc,\n    code: tx.result_code,\n    checkout_request_id: tx.checkout_request_id\n  }\n}];"
+      },
+      "id": "c3c3c3c3-0000-0000-0000-000000000006",
+      "name": "Log Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 400]
+    }
+  ],
+  "connections": {
+    "Webhook /mpesa/stk-callback": { "main": [[{ "node": "Parse Callback", "type": "main", "index": 0 }]] },
+    "Parse Callback":              { "main": [[{ "node": "Update Transaction", "type": "main", "index": 0 }]] },
+    "Update Transaction":          { "main": [[{ "node": "Was it successful?", "type": "main", "index": 0 }]] },
+    "Was it successful?": {
+      "main": [
+        [{ "node": "Build Confirmation", "type": "main", "index": 0 }],
+        [{ "node": "Log Failure", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": {
+    "description": "Receives Safaricom's STK Push callback, updates the DB row, and branches to success/failure handlers. Always 200s immediately so Safaricom doesn't retry."
+  },
+  "tags": [{ "name": "mpesa" }, { "name": "course" }]
+}
+

@@ -1,0 +1,44 @@
+{
+  "name": "Use Case — Donations (Bubble.io form)",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "donate", "responseMode": "lastNode", "options": {} },
+      "id": "e4000000-0000-0000-0000-000000000001",
+      "name": "Donation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "donate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $json.body;\nreturn [{ json: {\n  phone: d.phone,\n  amount: parseInt(d.amount, 10),\n  reference: `DON-${Date.now()}`,\n  description: 'Donation',\n  donor_name: d.name,\n  cause: d.cause || 'general'\n}}];"
+      },
+      "id": "e4000000-0000-0000-0000-000000000002",
+      "name": "Parse Donation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "02-stk-push", "mode": "list" },
+        "options": {}
+      },
+      "id": "e4000000-0000-0000-0000-000000000003",
+      "name": "Trigger STK Push",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [640, 300]
+    }
+  ],
+  "connections": {
+    "Donation Webhook": { "main": [[{ "node": "Parse Donation", "type": "main", "index": 0 }]] },
+    "Parse Donation":   { "main": [[{ "node": "Trigger STK Push", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "description": "Donation form (Bubble.io / WeWeb) triggers STK push. Add WhatsApp thank-you in callback workflow." },
+  "tags": [{ "name": "mpesa" }, { "name": "use-case" }]
+}
+

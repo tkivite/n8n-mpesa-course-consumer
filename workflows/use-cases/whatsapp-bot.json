@@ -1,0 +1,65 @@
+{
+  "name": "Use Case — WhatsApp Chatbot Payments",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "whatsapp/incoming", "responseMode": "lastNode", "options": {} },
+      "id": "e5000000-0000-0000-0000-000000000001",
+      "name": "WhatsApp Cloud Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "whatsapp-incoming"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Expect WhatsApp Cloud API payload. Parse 'Pay <amount>'.\nconst entry = $json.body?.entry?.[0];\nconst msg = entry?.changes?.[0]?.value?.messages?.[0];\nif (!msg || msg.type !== 'text') return [];\nconst text = (msg.text?.body || '').trim();\nconst m = text.match(/^pay\\s+(\\d+)/i);\nif (!m) return [{ json: { skip: true, from: msg.from, text } }];\nreturn [{ json: {\n  phone: msg.from,          // already in 2547... format\n  amount: parseInt(m[1], 10),\n  reference: `WA-${Date.now()}`,\n  description: 'WhatsApp pay'\n}}];"
+      },
+      "id": "e5000000-0000-0000-0000-000000000002",
+      "name": "Parse 'Pay N' Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ]
+        }
+      },
+      "id": "e5000000-0000-0000-0000-000000000003",
+      "name": "Valid command?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "02-stk-push", "mode": "list" },
+        "options": {}
+      },
+      "id": "e5000000-0000-0000-0000-000000000004",
+      "name": "Trigger STK Push",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [860, 220]
+    }
+  ],
+  "connections": {
+    "WhatsApp Cloud Webhook": { "main": [[{ "node": "Parse 'Pay N' Command", "type": "main", "index": 0 }]] },
+    "Parse 'Pay N' Command":  { "main": [[{ "node": "Valid command?", "type": "main", "index": 0 }]] },
+    "Valid command?":         { "main": [[{ "node": "Trigger STK Push", "type": "main", "index": 0 }], []] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "description": "User sends 'Pay 500' on WhatsApp → bot replies with STK push to their number." },
+  "tags": [{ "name": "mpesa" }, { "name": "use-case" }]
+}
+

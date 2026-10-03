@@ -1,0 +1,55 @@
+{
+  "name": "Use Case — SaaS Monthly Billing",
+  "nodes": [
+    {
+      "parameters": { "rule": { "interval": [{ "field": "cronExpression", "expression": "0 9 1 * *" }] } },
+      "id": "e2000000-0000-0000-0000-000000000001",
+      "name": "1st of month 09:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, phone, plan_amount, plan_name FROM subscriptions WHERE status='active';"
+      },
+      "id": "e2000000-0000-0000-0000-000000000002",
+      "name": "List Active Subs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map(i => ({ json: {\n  phone: i.json.phone,\n  amount: i.json.plan_amount,\n  reference: `SUB-${i.json.id}`,\n  description: i.json.plan_name\n}}));"
+      },
+      "id": "e2000000-0000-0000-0000-000000000003",
+      "name": "Map to STK",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "02-stk-push", "mode": "list" },
+        "options": {}
+      },
+      "id": "e2000000-0000-0000-0000-000000000004",
+      "name": "Trigger STK Push",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [860, 300]
+    }
+  ],
+  "connections": {
+    "1st of month 09:00": { "main": [[{ "node": "List Active Subs", "type": "main", "index": 0 }]] },
+    "List Active Subs":   { "main": [[{ "node": "Map to STK", "type": "main", "index": 0 }]] },
+    "Map to STK":         { "main": [[{ "node": "Trigger STK Push", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "description": "Monthly subscription billing. Iterates active subscriptions and fires STK push to each phone." },
+  "tags": [{ "name": "mpesa" }, { "name": "use-case" }]
+}
+

@@ -1,0 +1,45 @@
+{
+  "name": "Use Case — E-commerce (WooCommerce → STK Push)",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "woo/order-created", "responseMode": "lastNode", "options": {} },
+      "id": "e1000000-0000-0000-0000-000000000001",
+      "name": "Woo Webhook: order.created",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "woo-order-created"
+    },
+    {
+      "parameters": {
+        "jsCode": "const order = $json.body;\nreturn [{ json: {\n  phone: order.billing?.phone,\n  amount: Math.round(parseFloat(order.total)),\n  reference: `WOO-${order.id}`,\n  description: `Order ${order.id}`\n}}];"
+      },
+      "id": "e1000000-0000-0000-0000-000000000002",
+      "name": "Map Order → STK Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "02-stk-push", "mode": "list" },
+        "options": {}
+      },
+      "id": "e1000000-0000-0000-0000-000000000003",
+      "name": "Trigger STK Push",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [640, 300],
+      "notes": "Point to the 02-stk-push workflow after import"
+    }
+  ],
+  "connections": {
+    "Woo Webhook: order.created": { "main": [[{ "node": "Map Order → STK Payload", "type": "main", "index": 0 }]] },
+    "Map Order → STK Payload":    { "main": [[{ "node": "Trigger STK Push", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "description": "WooCommerce fires order.created → we extract phone/amount → trigger the shared STK push workflow." },
+  "tags": [{ "name": "mpesa" }, { "name": "use-case" }]
+}
+

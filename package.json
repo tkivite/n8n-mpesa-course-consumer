@@ -1,0 +1,15 @@
+{
+  "name": "n8n-mpesa-course-consumer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Student-facing docs tooling for the n8n M-Pesa course consumer repo.",
+  "scripts": {
+    "build:pdf": "node scripts/build-student-pdf.mjs"
+  },
+  "devDependencies": {
+    "highlight.js": "^11.10.0",
+    "marked": "^14.1.3"
+  }
+}
+

@@ -1,0 +1,126 @@
+{
+  "name": "02 - M-Pesa STK Push (Webhook Trigger)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mpesa/stk-push",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "b2b2b2b2-0000-0000-0000-000000000001",
+      "name": "Webhook /mpesa/stk-push",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "mpesa-stk-push"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- Validate & normalise input ---\nconst body = $json.body || $json;\nlet phone = String(body.phone || '').trim();\nconst amount = parseInt(body.amount, 10);\nconst reference = String(body.reference || 'ORDER-' + Date.now()).slice(0, 12);\nconst description = String(body.description || 'Payment').slice(0, 13);\n\n// Normalise phone to 2547XXXXXXXX / 2541XXXXXXXX\nphone = phone.replace(/[^0-9]/g, '');\nif (phone.startsWith('0')) phone = '254' + phone.slice(1);\nif (phone.startsWith('+')) phone = phone.slice(1);\nif (phone.startsWith('7') || phone.startsWith('1')) phone = '254' + phone;\n\nif (!/^254(7|1)\\d{8}$/.test(phone)) {\n  throw new Error('Invalid phone number. Use 2547XXXXXXXX format. Got: ' + phone);\n}\nif (!amount || amount < 1) {\n  throw new Error('Amount must be a positive integer');\n}\n\nreturn [{ json: { phone, amount, reference, description } }];"
+      },
+      "id": "b2b2b2b2-0000-0000-0000-000000000002",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "01-mpesa-auth",
+          "mode": "list"
+        },
+        "options": {}
+      },
+      "id": "b2b2b2b2-0000-0000-0000-000000000003",
+      "name": "Get Access Token",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [640, 300],
+      "notes": "Point this to the '01 - M-Pesa Auth' workflow after import"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- Build STK Push payload ---\nconst input = $('Validate Input').item.json;\nconst token = $json.access_token;\n\nconst shortcode = $env.MPESA_SHORTCODE || '174379';\nconst passkey = $env.MPESA_PASSKEY;\nconst callbackBase = $env.MPESA_CALLBACK_BASE_URL;\nconst baseUrl = $env.MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke';\n\nif (!passkey) throw new Error('MPESA_PASSKEY env var not set');\nif (!callbackBase) throw new Error('MPESA_CALLBACK_BASE_URL env var not set');\n\n// Timestamp: YYYYMMDDHHmmss (Africa/Nairobi)\nconst now = new Date();\nconst pad = (n) => String(n).padStart(2, '0');\n// n8n container TZ is set to Africa/Nairobi in docker-compose\nconst timestamp =\n  now.getFullYear().toString() +\n  pad(now.getMonth() + 1) +\n  pad(now.getDate()) +\n  pad(now.getHours()) +\n  pad(now.getMinutes()) +\n  pad(now.getSeconds());\n\nconst password = Buffer.from(shortcode + passkey + timestamp).toString('base64');\n\nreturn [{\n  json: {\n    url: `${baseUrl}/mpesa/stkpush/v1/processrequest`,\n    authHeader: `Bearer ${token}`,\n    payload: {\n      BusinessShortCode: parseInt(shortcode, 10),\n      Password: password,\n      Timestamp: timestamp,\n      TransactionType: 'CustomerPayBillOnline',\n      Amount: input.amount,\n      PartyA: parseInt(input.phone, 10),\n      PartyB: parseInt(shortcode, 10),\n      PhoneNumber: parseInt(input.phone, 10),\n      CallBackURL: `${callbackBase}/webhook/mpesa/stk-callback`,\n      AccountReference: input.reference,\n      TransactionDesc: input.description\n    }\n  }\n}];"
+      },
+      "id": "b2b2b2b2-0000-0000-0000-000000000004",
+      "name": "Build STK Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ $json.authHeader }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "b2b2b2b2-0000-0000-0000-000000000005",
+      "name": "POST /stkpush",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": { "__rl": true, "value": "public", "mode": "list" },
+        "table": { "__rl": true, "value": "mpesa_transactions", "mode": "list" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "checkout_request_id": "={{ $json.CheckoutRequestID }}",
+            "merchant_request_id": "={{ $json.MerchantRequestID }}",
+            "phone": "={{ $('Validate Input').item.json.phone }}",
+            "amount": "={{ $('Validate Input').item.json.amount }}",
+            "reference": "={{ $('Validate Input').item.json.reference }}",
+            "status": "pending"
+          }
+        }
+      },
+      "id": "b2b2b2b2-0000-0000-0000-000000000006",
+      "name": "Save Transaction (Pending)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 300],
+      "notes": "Configure Postgres credential pointing to the 'n8n-mpesa-postgres' container"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $('POST /stkpush').item.json;\nconst input = $('Validate Input').item.json;\n\nreturn [{\n  json: {\n    success: resp.ResponseCode === '0',\n    message: resp.CustomerMessage || resp.errorMessage || 'Unknown',\n    checkout_request_id: resp.CheckoutRequestID,\n    merchant_request_id: resp.MerchantRequestID,\n    reference: input.reference,\n    phone: input.phone,\n    amount: input.amount\n  }\n}];"
+      },
+      "id": "b2b2b2b2-0000-0000-0000-000000000007",
+      "name": "Build API Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 300]
+    }
+  ],
+  "connections": {
+    "Webhook /mpesa/stk-push": { "main": [[{ "node": "Validate Input", "type": "main", "index": 0 }]] },
+    "Validate Input":          { "main": [[{ "node": "Get Access Token", "type": "main", "index": 0 }]] },
+    "Get Access Token":        { "main": [[{ "node": "Build STK Payload", "type": "main", "index": 0 }]] },
+    "Build STK Payload":       { "main": [[{ "node": "POST /stkpush", "type": "main", "index": 0 }]] },
+    "POST /stkpush":           { "main": [[{ "node": "Save Transaction (Pending)", "type": "main", "index": 0 }]] },
+    "Save Transaction (Pending)": { "main": [[{ "node": "Build API Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": {
+    "description": "POST { phone, amount, reference, description } to the webhook URL. Triggers M-Pesa STK Push and stores a pending transaction row."
+  },
+  "tags": [{ "name": "mpesa" }, { "name": "course" }]
+}
+

@@ -1,0 +1,99 @@
+{
+  "name": "04 - M-Pesa Reconciliation (Status Query)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 5 }]
+        }
+      },
+      "id": "d4d4d4d4-0000-0000-0000-000000000001",
+      "name": "Every 5 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT checkout_request_id, reference, phone, amount\nFROM mpesa_transactions\nWHERE status = 'pending'\n  AND created_at < NOW() - INTERVAL '2 minutes'\n  AND created_at > NOW() - INTERVAL '24 hours'\nLIMIT 50;"
+      },
+      "id": "d4d4d4d4-0000-0000-0000-000000000002",
+      "name": "Find Pending TX",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "01-mpesa-auth", "mode": "list" },
+        "options": {}
+      },
+      "id": "d4d4d4d4-0000-0000-0000-000000000003",
+      "name": "Get Access Token",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const token = $json.access_token;\nconst pending = $('Find Pending TX').all();\nconst shortcode = $env.MPESA_SHORTCODE || '174379';\nconst passkey = $env.MPESA_PASSKEY;\nconst baseUrl = $env.MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke';\n\nconst now = new Date();\nconst pad = (n) => String(n).padStart(2, '0');\nconst timestamp =\n  now.getFullYear().toString() + pad(now.getMonth()+1) + pad(now.getDate()) +\n  pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());\nconst password = Buffer.from(shortcode + passkey + timestamp).toString('base64');\n\nreturn pending.map(p => ({\n  json: {\n    url: `${baseUrl}/mpesa/stkpushquery/v1/query`,\n    authHeader: `Bearer ${token}`,\n    checkout_request_id: p.json.checkout_request_id,\n    payload: {\n      BusinessShortCode: parseInt(shortcode, 10),\n      Password: password,\n      Timestamp: timestamp,\n      CheckoutRequestID: p.json.checkout_request_id\n    }\n  }\n}));"
+      },
+      "id": "d4d4d4d4-0000-0000-0000-000000000004",
+      "name": "Build Query Payloads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "={{ $json.authHeader }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "d4d4d4d4-0000-0000-0000-000000000005",
+      "name": "POST /stkpushquery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE mpesa_transactions\nSET status = CASE WHEN $1 = '0' THEN 'success'\n                  WHEN $1 = '1032' THEN 'cancelled'\n                  WHEN $1 IS NULL THEN status\n                  ELSE 'failed' END,\n    result_code = $1,\n    result_desc = $2,\n    updated_at = NOW()\nWHERE checkout_request_id = $3\nRETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.ResultCode }},{{ $json.ResultDesc }},{{ $('Build Query Payloads').item.json.checkout_request_id }}"
+        }
+      },
+      "id": "d4d4d4d4-0000-0000-0000-000000000006",
+      "name": "Update Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 300]
+    }
+  ],
+  "connections": {
+    "Every 5 min":          { "main": [[{ "node": "Find Pending TX", "type": "main", "index": 0 }]] },
+    "Find Pending TX":      { "main": [[{ "node": "Get Access Token", "type": "main", "index": 0 }]] },
+    "Get Access Token":     { "main": [[{ "node": "Build Query Payloads", "type": "main", "index": 0 }]] },
+    "Build Query Payloads": { "main": [[{ "node": "POST /stkpushquery", "type": "main", "index": 0 }]] },
+    "POST /stkpushquery":   { "main": [[{ "node": "Update Status", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": {
+    "description": "Runs every 5 minutes. For every pending transaction older than 2 min, calls stkpushquery to resolve its final state. Handles the case where Safaricom's callback never arrives."
+  },
+  "tags": [{ "name": "mpesa" }, { "name": "course" }]
+}
+

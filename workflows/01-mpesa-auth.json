@@ -1,0 +1,74 @@
+{
+  "name": "01 - M-Pesa Auth (Get Access Token)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1a1a1a1-0000-0000-0000-000000000001",
+      "name": "When called by another workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Basic Auth header from env vars\nconst key = $env.MPESA_CONSUMER_KEY;\nconst secret = $env.MPESA_CONSUMER_SECRET;\nconst base = $env.MPESA_BASE_URL || 'https://sandbox.safaricom.co.ke';\n\nif (!key || !secret) {\n  throw new Error('MPESA_CONSUMER_KEY / MPESA_CONSUMER_SECRET not set in env');\n}\n\nconst token = Buffer.from(`${key}:${secret}`).toString('base64');\n\nreturn [{ json: { authHeader: `Basic ${token}`, baseUrl: base } }];"
+      },
+      "id": "a1a1a1a1-0000-0000-0000-000000000002",
+      "name": "Build Basic Auth",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.baseUrl }}/oauth/v1/generate?grant_type=client_credentials",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authHeader }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "a1a1a1a1-0000-0000-0000-000000000003",
+      "name": "GET /oauth/v1/generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return token + computed expiry\nconst token = $json.access_token;\nconst expiresIn = parseInt($json.expires_in || '3599', 10);\n\nif (!token) {\n  throw new Error('No access_token in Daraja response: ' + JSON.stringify($json));\n}\n\nreturn [{\n  json: {\n    access_token: token,\n    expires_in: expiresIn,\n    expires_at: new Date(Date.now() + expiresIn * 1000).toISOString()\n  }\n}];"
+      },
+      "id": "a1a1a1a1-0000-0000-0000-000000000004",
+      "name": "Return Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "When called by another workflow": {
+      "main": [[{ "node": "Build Basic Auth", "type": "main", "index": 0 }]]
+    },
+    "Build Basic Auth": {
+      "main": [[{ "node": "GET /oauth/v1/generate", "type": "main", "index": 0 }]]
+    },
+    "GET /oauth/v1/generate": {
+      "main": [[{ "node": "Return Token", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Reusable sub-workflow. Call it from any other workflow via 'Execute Workflow' node. Returns { access_token, expires_in, expires_at }."
+  },
+  "tags": [{ "name": "mpesa" }, { "name": "course" }]
+}
+
